@@ -58,7 +58,12 @@ the domain doesn't yet resolve to this server from the public internet.
 
 ```bash
 git clone https://github.com/gibberin/TradingAgents.git tradingagents
-cd tradingagents/server
+cd tradingagents
+git checkout deploy-caddy   # <-- required until this merges to main; a plain
+                            #     clone defaults to main, which still has the
+                            #     retired nginx setup (no TLS, no domain, plain
+                            #     http://<ip> — confirmed the hard way once already)
+cd server
 chmod +x scripts/deploy.sh
 sudo ./scripts/deploy.sh
 ```
