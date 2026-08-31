@@ -209,7 +209,7 @@ class RunRequest(BaseModel):
     ticker: str
     date:   str          # YYYY-MM-DD
     llm_provider: str = "anthropic"
-    model:        str = "claude-sonnet-4-20250514"
+    model:        str = "claude-sonnet-5"
 
 
 @app.post("/run")
