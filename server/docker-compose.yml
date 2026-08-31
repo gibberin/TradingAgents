@@ -1,0 +1,67 @@
+version: "3.9"
+
+# ── Docker secrets ────────────────────────────────────────────────────────────
+# Each secret is a plain text file under ./secrets/ on the host.
+# They are mounted read-only inside the container at /run/secrets/<name>
+# and are NEVER exposed as environment variables or written to disk.
+# Run `scripts/create_secrets.sh` to create the files interactively.
+secrets:
+  basic_auth_user:
+    file: ./secrets/basic_auth_user
+  basic_auth_password:
+    file: ./secrets/basic_auth_password
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  finnhub_api_key:
+    file: ./secrets/finnhub_api_key
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  google_api_key:
+    file: ./secrets/google_api_key
+  reddit_client_id:
+    file: ./secrets/reddit_client_id
+  reddit_client_secret:
+    file: ./secrets/reddit_client_secret
+
+services:
+  tradingagents:
+    build: .
+    image: tradingagents-viewer:latest
+    container_name: tradingagents
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"   # reserved for future TLS termination
+    volumes:
+      # Block Storage volume — mount this Linode volume at /mnt/reports on the host,
+      # then it maps through to /data/reports inside the container.
+      - ${REPORTS_HOST_PATH:-/mnt/reports}:/data/reports
+    secrets:
+      - basic_auth_user
+      - basic_auth_password
+      - anthropic_api_key
+      - finnhub_api_key
+      - openai_api_key
+      - google_api_key
+      - reddit_client_id
+      - reddit_client_secret
+    environment:
+      # Non-sensitive config only — no API keys or passwords here.
+      REPORTS_PATH:       /data/reports
+      TRADINGAGENTS_PATH: /app/TradingAgents
+      PYTHONUNBUFFERED:   "1"
+      # Optional overrides (not secrets)
+      REDDIT_USER_AGENT:  ${REDDIT_USER_AGENT:-tradingagents-deploy}
+      REPORTS_HOST_PATH:  ${REPORTS_HOST_PATH:-/mnt/reports}
+
+    # Reasonable resource limits for a Linode 4GB Shared instance
+    deploy:
+      resources:
+        limits:
+          memory: 3500M
+        reservations:
+          memory: 512M
+
+networks:
+  default:
+    name: tradingagents-net

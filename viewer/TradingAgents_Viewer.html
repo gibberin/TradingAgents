@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradingAgents Report Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+:root {
+  --bg:#0d0f14; --bg2:#13161d; --bg3:#1a1e27; --bg4:#222635;
+  --border:#2a2f42; --border2:#353c55;
+  --text:#e8eaf0; --text2:#9ba3bf; --text3:#636b88;
+  --accent:#4f7cff; --accent2:#2d4fc7;
+  --green:#2ecc71; --green-bg:#0d2b1e;
+  --red:#e74c3c; --red-bg:#2b0d0d;
+  --amber:#f39c12; --amber-bg:#2b2008;
+  --teal:#1abc9c; --purple:#9b59b6;
+  --mono:'SF Mono','Fira Code','Cascadia Code',monospace;
+  --sans:'Inter',system-ui,sans-serif;
+  --r:10px; --rs:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.6;min-height:100vh}
+
+/* ── LANDING ── */
+#landing{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:18px;padding:40px}
+.land-logo{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.land-title{font-size:30px;font-weight:800;color:var(--text);letter-spacing:-.02em;text-align:center}
+.land-sub{color:var(--text3);font-size:14px;text-align:center;max-width:420px;line-height:1.6}
+.land-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:32px 36px;width:480px;max-width:100%;display:flex;flex-direction:column;gap:16px;align-items:center}
+.land-card h3{font-size:16px;font-weight:600;color:var(--text);text-align:center}
+.land-card p{font-size:13px;color:var(--text2);text-align:center;line-height:1.6}
+.btn-primary{padding:10px 28px;background:var(--accent);color:#fff;border:none;border-radius:var(--rs);font-weight:700;font-size:14px;cursor:pointer;transition:background .15s;letter-spacing:.01em}
+.btn-primary:hover{background:var(--accent2)}
+.btn-secondary{padding:9px 20px;background:transparent;border:1px solid var(--border2);border-radius:var(--rs);color:var(--text2);font-size:13px;cursor:pointer;transition:all .15s}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.compat-warn{background:var(--amber-bg);border:1px solid #5a4010;border-radius:var(--rs);padding:12px 16px;font-size:12px;color:var(--amber);text-align:center;line-height:1.5;width:100%}
+
+/* ── REPORT PICKER ── */
+#picker{display:none;flex-direction:column;min-height:100vh}
+.picker-header{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.picker-header .logo{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.picker-title{font-size:16px;font-weight:700;color:var(--text)}
+.picker-path{font-size:12px;color:var(--text3);font-family:var(--mono);margin-left:auto;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-body{flex:1;padding:28px 32px;overflow-y:auto}
+.picker-section-label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);font-weight:600;margin-bottom:14px}
+.report-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:28px}
+.report-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;cursor:pointer;transition:border-color .15s,background .15s;display:flex;flex-direction:column;gap:8px}
+.report-card:hover{border-color:var(--accent);background:var(--bg3)}
+.rc-ticker{font-size:22px;font-weight:800;letter-spacing:-.01em;color:var(--text);font-family:var(--mono)}
+.rc-date{font-size:12px;color:var(--text3)}
+.rc-verdict{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;align-self:flex-start;margin-top:2px}
+.rv-sell{background:var(--red-bg);color:var(--red);border:1px solid #5a1a1a}
+.rv-buy{background:var(--green-bg);color:var(--green);border:1px solid #1a4a2a}
+.rv-hold{background:var(--amber-bg);color:var(--amber);border:1px solid #4a3a1a}
+.rv-unknown{background:var(--bg4);color:var(--text3);border:1px solid var(--border)}
+.rc-summary{font-size:12px;color:var(--text2);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.no-reports{color:var(--text3);font-size:14px;padding:40px 0;text-align:center}
+.picker-actions{display:flex;gap:10px;margin-bottom:24px}
+.search-box{flex:1;padding:8px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-size:13px;font-family:var(--sans);outline:none}
+.search-box:focus{border-color:var(--accent)}
+.search-box::placeholder{color:var(--text3)}
+
+/* ── APP ── */
+#app{display:none;flex-direction:column;height:100vh;overflow:hidden}
+.app-header{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.app-header .logo{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700;cursor:pointer}
+.app-header .logo:hover{color:#fff}
+.hdr-ticker{font-size:21px;font-weight:800;letter-spacing:-.01em;color:var(--text);font-family:var(--mono)}
+.hdr-date{font-size:12px;color:var(--text3)}
+.verdict-badge{padding:4px 12px;border-radius:20px;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+.app-body{display:flex;flex:1;overflow:hidden}
+.sidebar{width:210px;min-width:210px;background:var(--bg2);border-right:1px solid var(--border);padding:12px 0;overflow-y:auto;display:flex;flex-direction:column;gap:2px;flex-shrink:0}
+.sb-section{padding:6px 16px 2px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-top:8px}
+.sb-item{display:flex;align-items:center;gap:9px;padding:7px 16px;cursor:pointer;color:var(--text2);font-size:13px;border-left:3px solid transparent;transition:background .1s}
+.sb-item:hover{background:var(--bg3);color:var(--text)}
+.sb-item.active{background:var(--bg3);color:var(--accent);border-left-color:var(--accent);font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.d-blue{background:var(--accent)} .d-green{background:var(--green)} .d-red{background:var(--red)}
+.d-amber{background:var(--amber)} .d-purple{background:var(--purple)} .d-teal{background:var(--teal)}
+.main-panel{flex:1;overflow-y:auto;padding:26px 30px;background:var(--bg)}
+
+/* ── CONTENT ── */
+.sec-header{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.sec-title{font-size:18px;font-weight:700;color:var(--text)}
+.sec-badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.b-analysts{background:#1a1a3a;color:var(--accent)}
+.b-research{background:#2a1a1a;color:#e87070}
+.b-trading{background:#1a2a1a;color:var(--green)}
+.b-risk{background:#2a2a1a;color:var(--amber)}
+.b-decision{background:#2a1a2a;color:var(--purple)}
+.b-overview{background:#1a2b2b;color:var(--teal)}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px}
+.stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:5px;font-weight:600}
+.stat-val{font-size:22px;font-weight:800;letter-spacing:-.02em;font-family:var(--mono)}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:3px}
+.sv-red{color:var(--red)} .sv-green{color:var(--green)} .sv-amber{color:var(--amber)}
+
+.dc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:18px}
+.dc-sell{border-left:4px solid var(--red)} .dc-buy{border-left:4px solid var(--green)} .dc-hold{border-left:4px solid var(--amber)} .dc-info{border-left:4px solid var(--accent)}
+.dc-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px}
+.dc-body{color:var(--text2);font-size:13.5px;line-height:1.75}
+
+.pipeline{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:20px}
+.pl-node{padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid}
+.pl-a{background:#1a1a3a;color:var(--accent);border-color:#2a2a5a}
+.pl-r{background:#2a1a1a;color:#e87070;border-color:#5a2a2a}
+.pl-m{background:#2a1a2a;color:var(--purple);border-color:#5a2a5a}
+.pl-t{background:#1a2a1a;color:var(--green);border-color:#2a5a2a}
+.pl-ri{background:#2a2a1a;color:var(--amber);border-color:#5a5a2a}
+.pl-d{background:#1a2b2b;color:var(--teal);border-color:#2a5b5b}
+.pl-arrow{color:var(--border2);font-size:14px}
+
+.tab-bar{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--border)}
+.tab-btn{padding:7px 16px;cursor:pointer;border:none;background:none;color:var(--text3);font-size:13px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .12s}
+.tab-btn:hover{color:var(--text2)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+.debate-msg{display:flex;gap:14px;padding:18px 0;border-bottom:1px solid var(--border)}
+.debate-msg:last-child{border-bottom:none}
+.d-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-top:2px}
+.av-bull{background:#0d2b1e} .av-bear{background:#2b0d0d} .av-mgr{background:#1a1a2b}
+.d-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:7px}
+.d-name span{font-weight:400;color:var(--text3);font-size:11px;margin-left:7px}
+
+.sent-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)}
+.sent-row:last-child{border-bottom:none}
+.sent-src{width:90px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.08em}
+.sent-bar-wrap{flex:1;height:7px;background:var(--bg4);border-radius:4px;overflow:hidden}
+.sent-bar{height:100%;border-radius:4px;transition:width .5s ease}
+.sb-bull{background:var(--green)} .sb-bear{background:var(--red)} .sb-neut{background:var(--amber)}
+.sent-lbl{width:90px;font-size:12px;font-weight:600;text-align:right}
+.sl-bull{color:var(--green)} .sl-bear{color:var(--red)} .sl-neut{color:var(--amber)} .sl-abs{color:var(--text3)}
+
+.trader-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:18px}
+.tf{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:12px}
+.tf-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:4px;font-weight:600}
+.tf-val{font-size:18px;font-weight:700;font-family:var(--mono);color:var(--text)}
+
+/* Markdown */
+.md h1,.md h2,.md h3,.md h4{color:var(--text);font-weight:700;letter-spacing:-.01em;margin:18px 0 8px}
+.md h1{font-size:19px} .md h2{font-size:16px;border-bottom:1px solid var(--border);padding-bottom:7px} .md h3{font-size:14px;color:var(--text2)}
+.md p{margin:9px 0;color:var(--text2);font-size:14px;line-height:1.75}
+.md strong{color:var(--text);font-weight:600}
+.md table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+.md th{background:var(--bg3);color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.07em;padding:7px 11px;text-align:left;border:1px solid var(--border);font-weight:600}
+.md td{padding:7px 11px;border:1px solid var(--border);color:var(--text2)}
+.md tr:hover td{background:var(--bg3)}
+.md ul,.md ol{padding-left:20px;margin:7px 0;color:var(--text2)}
+.md li{margin:3px 0;font-size:14px}
+.md code{background:var(--bg3);padding:2px 5px;border-radius:3px;font-family:var(--mono);font-size:12px;color:var(--accent)}
+.md hr{border:none;border-top:1px solid var(--border);margin:18px 0}
+.md blockquote{border-left:3px solid var(--accent);padding-left:14px;margin:10px 0;color:var(--text3);font-style:italic}
+
+/* Loading */
+#loading{display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;min-height:100vh;color:var(--text2)}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:var(--bg2)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="landing">
+  <div class="land-logo">TradingAgents</div>
+  <div class="land-title">Report Viewer</div>
+  <div class="land-sub">Select the folder where TradingAgents saves its reports, then pick a report to view.</div>
+
+  <div class="land-card">
+    <h3>Choose your reports folder</h3>
+    <p>Point to the parent directory that contains your TradingAgents output folders (e.g. <code style="background:var(--bg3);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px">STM_20260528_194527</code>, <code style="background:var(--bg3);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:11px">NVDA_20260529_101500</code>…)</p>
+    <button class="btn-primary" onclick="pickDirectory()">📁 Select Reports Folder</button>
+    <div id="compat-check"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-msg">Scanning reports…</div>
+</div>
+
+<!-- PICKER -->
+<div id="picker">
+  <div class="picker-header">
+    <div class="logo">TradingAgents</div>
+    <div class="picker-title">Select a Report</div>
+    <div class="picker-path" id="picker-path"></div>
+    <button class="btn-secondary" onclick="backToLanding()">Change folder</button>
+  </div>
+  <div class="picker-body">
+    <div class="picker-actions">
+      <input class="search-box" type="text" placeholder="Filter by ticker, date, verdict…" oninput="filterReports(this.value)" id="search-input">
+      <button class="btn-secondary" onclick="rescanFolder()">↺ Rescan</button>
+    </div>
+    <div class="picker-section-label" id="reports-count"></div>
+    <div class="report-grid" id="report-grid"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="app-header">
+    <div class="logo" onclick="backToPicker()" title="Back to report list">← TradingAgents</div>
+    <div class="hdr-ticker" id="hdr-ticker"></div>
+    <div class="verdict-badge" id="hdr-verdict"></div>
+    <div class="hdr-date" id="hdr-date"></div>
+  </div>
+  <div class="app-body">
+    <div class="sidebar">
+      <div class="sb-section">Overview</div>
+      <div class="sb-item active" data-panel="summary" onclick="showPanel(this)"><span class="dot d-teal"></span>Summary</div>
+      <div class="sb-section">Analysts</div>
+      <div class="sb-item" data-panel="fundamentals" onclick="showPanel(this)"><span class="dot d-blue"></span>Fundamentals</div>
+      <div class="sb-item" data-panel="market" onclick="showPanel(this)"><span class="dot d-blue"></span>Technical / Market</div>
+      <div class="sb-item" data-panel="news" onclick="showPanel(this)"><span class="dot d-blue"></span>News & Macro</div>
+      <div class="sb-item" data-panel="sentiment" onclick="showPanel(this)"><span class="dot d-blue"></span>Sentiment</div>
+      <div class="sb-section">Research</div>
+      <div class="sb-item" data-panel="debate" onclick="showPanel(this)"><span class="dot d-red"></span>Bull vs Bear</div>
+      <div class="sb-item" data-panel="manager" onclick="showPanel(this)"><span class="dot d-purple"></span>Research Manager</div>
+      <div class="sb-section">Decision</div>
+      <div class="sb-item" data-panel="trader" onclick="showPanel(this)"><span class="dot d-green"></span>Trader</div>
+      <div class="sb-item" data-panel="risk" onclick="showPanel(this)"><span class="dot d-amber"></span>Risk Analysts</div>
+      <div class="sb-item" data-panel="final" onclick="showPanel(this)"><span class="dot d-teal"></span>Final Decision</div>
+    </div>
+    <div class="main-panel" id="main-panel"></div>
+  </div>
+</div>
+
+<script>
+// ── file map: report subfolder path → { name, files:{key:text} } ──
+// subfolder naming convention: TICKER_YYYYMMDD_HHMMSS
+const SUBFOLDERS = {
+  '1_analysts': ['fundamentals','market','news','sentiment'],
+  '2_research': ['bull','bear','manager'],
+  '3_trading':  ['trader'],
+  '4_risk':     ['aggressive','neutral','conservative'],
+  '5_portfolio':['decision'],
+};
+const ALL_KEYS = Object.values(SUBFOLDERS).flat();
+
+let rootHandle = null;       // DirectoryFileSystemHandle of parent folder
+let allReports = [];         // [{folderName, ticker, date, time, files:{}}]
+let currentReport = null;
+
+// ── Check API compatibility ──
+window.addEventListener('DOMContentLoaded', () => {
+  if (!window.showDirectoryPicker) {
+    document.getElementById('compat-check').innerHTML =
+      '<div class="compat-warn">⚠ Your browser does not support the File System Access API.<br>' +
+      'Please use <strong>Chrome 86+</strong>, <strong>Edge 86+</strong>, or <strong>Opera</strong>. Firefox and Safari are not supported.</div>';
+  }
+});
+
+// ── Navigation ──
+function show(id) {
+  ['landing','loading','picker','app'].forEach(s => {
+    const el = document.getElementById(s);
+    el.style.display = s === id ? (s === 'app' ? 'flex' : s === 'picker' ? 'flex' : s === 'loading' ? 'flex' : 'flex') : 'none';
+  });
+}
+
+function backToLanding() { show('landing'); }
+function backToPicker()   { show('picker'); renderPickerGrid(allReports); }
+
+// ── Pick directory ──
+async function pickDirectory() {
+  if (!window.showDirectoryPicker) {
+    alert('Your browser does not support folder selection. Please use Chrome or Edge.');
+    return;
+  }
+  try {
+    rootHandle = await window.showDirectoryPicker({ mode: 'read' });
+    await scanReports();
+  } catch(e) {
+    if (e.name !== 'AbortError') console.error(e);
+  }
+}
+
+async function rescanFolder() {
+  if (!rootHandle) return;
+  await scanReports();
+}
+
+// ── Scan parent folder for report subfolders ──
+async function scanReports() {
+  show('loading');
+  document.getElementById('loading-msg').textContent = 'Scanning reports…';
+  allReports = [];
+
+  try {
+    document.getElementById('picker-path').textContent = rootHandle.name;
+
+    for await (const [name, handle] of rootHandle.entries()) {
+      if (handle.kind !== 'directory') continue;
+
+      // Expect TICKER_YYYYMMDD_HHMMSS or similar
+      const m = name.match(/^([A-Z0-9.\-^]+)_(\d{4})(\d{2})(\d{2})_(\d{6})$/i);
+      const ticker = m ? m[1].toUpperCase() : null;
+      const date   = m ? `${m[2]}-${m[3]}-${m[4]}` : null;
+      const time   = m ? `${m[5].slice(0,2)}:${m[5].slice(2,4)}:${m[5].slice(4,6)}` : null;
+
+      document.getElementById('loading-msg').textContent = `Reading ${name}…`;
+
+      // Try to read the key files
+      const files = {};
+      let found = 0;
+      for (const [subdir, keys] of Object.entries(SUBFOLDERS)) {
+        let subHandle;
+        try { subHandle = await handle.getDirectoryHandle(subdir); } catch(e) { continue; }
+        for (const key of keys) {
+          try {
+            const fh = await subHandle.getFileHandle(key + '.md');
+            const file = await fh.getFile();
+            files[key] = await file.text();
+            found++;
+          } catch(e) { /* file missing, skip */ }
+        }
+      }
+      // Also try complete_report.md at root
+      try {
+        const fh = await handle.getFileHandle('complete_report.md');
+        const file = await fh.getFile();
+        files['complete_report'] = await file.text();
+      } catch(e) {}
+
+      if (found > 0) {
+        allReports.push({ folderName: name, ticker, date, time, files });
+      }
+    }
+
+    // Sort newest first
+    allReports.sort((a, b) => b.folderName.localeCompare(a.folderName));
+
+    show('picker');
+    renderPickerGrid(allReports);
+
+  } catch(e) {
+    show('landing');
+    alert('Error reading folder: ' + e.message);
+  }
+}
+
+// ── Picker grid ──
+function verdictFromFiles(files) {
+  const dec = files['decision'] || '';
+  const m = dec.match(/\*\*Rating\*\*:\s*(\w+)/i) || dec.match(/Rating:\s*(\w+)/i);
+  if (m) return m[1].trim().toUpperCase();
+  const m2 = dec.match(/\*\*(Buy|Sell|Hold)\*\*/i);
+  return m2 ? m2[1].toUpperCase() : '';
+}
+
+function excerptFromFiles(files) {
+  const dec = files['decision'] || '';
+  const m = dec.match(/\*\*Executive Summary\*\*:\s*([\s\S]+?)(?=\*\*Investment|\*\*Price|$)/i);
+  if (m) return m[1].trim().slice(0, 140) + '…';
+  // fallback: first 140 chars of decision
+  return dec.replace(/\*\*/g,'').slice(0, 140).trim() + '…';
+}
+
+function verdictBadgeClass(v) {
+  if (!v) return 'rv-unknown';
+  if (v === 'SELL') return 'rv-sell';
+  if (v === 'BUY')  return 'rv-buy';
+  if (v === 'HOLD') return 'rv-hold';
+  return 'rv-unknown';
+}
+
+function renderPickerGrid(reports) {
+  const grid = document.getElementById('report-grid');
+  const count = document.getElementById('reports-count');
+
+  if (reports.length === 0) {
+    count.textContent = 'No reports found';
+    grid.innerHTML = '<div class="no-reports">No TradingAgents report folders found in this directory.<br>Make sure you selected the folder that <em>contains</em> the report subfolders.</div>';
+    return;
+  }
+
+  count.textContent = `${reports.length} report${reports.length !== 1 ? 's' : ''} found`;
+
+  grid.innerHTML = reports.map((r, i) => {
+    const verdict  = verdictFromFiles(r.files);
+    const excerpt  = excerptFromFiles(r.files);
+    const badgeCls = verdictBadgeClass(verdict);
+    const dispDate = r.date || r.folderName;
+    const dispTime = r.time ? ` · ${r.time}` : '';
+    const dispTicker = r.ticker || r.folderName;
+
+    return `<div class="report-card" onclick="openReport(${i})">
+      <div class="rc-ticker">${dispTicker}</div>
+      <div class="rc-date">${dispDate}${dispTime}</div>
+      ${verdict ? `<div class="rc-verdict ${badgeCls}">${verdict}</div>` : ''}
+      <div class="rc-summary">${excerpt}</div>
+    </div>`;
+  }).join('');
+}
+
+function filterReports(q) {
+  const s = q.trim().toLowerCase();
+  if (!s) { renderPickerGrid(allReports); return; }
+  const filtered = allReports.filter(r => {
+    const verdict = verdictFromFiles(r.files).toLowerCase();
+    return (r.ticker||'').toLowerCase().includes(s) ||
+           (r.date||'').includes(s) ||
+           (r.folderName||'').toLowerCase().includes(s) ||
+           verdict.includes(s);
+  });
+  renderPickerGrid(filtered);
+}
+
+// ── Open a report ──
+function openReport(idx) {
+  // idx is into the currently displayed filtered list — rebuild from full allReports
+  // Actually we pass the real index into allReports via the onclick
+  // But filterReports renders a slice, so we need to track differently.
+  // Simple fix: store index into allReports on the card via data attribute.
+  // The onclick already uses the loop index into the `reports` param of renderPickerGrid.
+  // We'll just re-call with the filtered array stored in a var.
+  // Let's use a data-idx approach instead — patch renderPickerGrid:
+  // Actually since filterReports calls renderPickerGrid(filtered), idx is correct for filtered.
+  // We store filtered globally.
+}
+
+// ── Redo with a proper filtered-list tracker ──
+let displayedReports = [];
+
+function renderPickerGrid(reports) {
+  displayedReports = reports;
+  const grid = document.getElementById('report-grid');
+  const count = document.getElementById('reports-count');
+
+  if (reports.length === 0) {
+    count.textContent = 'No reports found';
+    grid.innerHTML = '<div class="no-reports">No TradingAgents report folders found in this directory.<br>Make sure you selected the folder that <em>contains</em> the report subfolders.</div>';
+    return;
+  }
+
+  count.textContent = `${reports.length} report${reports.length !== 1 ? 's' : ''} found`;
+
+  grid.innerHTML = reports.map((r, i) => {
+    const verdict  = verdictFromFiles(r.files);
+    const excerpt  = excerptFromFiles(r.files);
+    const badgeCls = verdictBadgeClass(verdict);
+    const dispDate = r.date || r.folderName;
+    const dispTime = r.time ? ` · ${r.time}` : '';
+    const dispTicker = r.ticker || r.folderName;
+
+    return `<div class="report-card" onclick="openReport(${i})">
+      <div class="rc-ticker">${dispTicker}</div>
+      <div class="rc-date">${dispDate}${dispTime}</div>
+      ${verdict ? `<div class="rc-verdict ${badgeCls}">${verdict}</div>` : ''}
+      <div class="rc-summary">${excerpt}</div>
+    </div>`;
+  }).join('');
+}
+
+function openReport(idx) {
+  const r = displayedReports[idx];
+  if (!r) return;
+  currentReport = r;
+
+  // Parse metadata
+  const dec = r.files['decision'] || '';
+  const verdict  = verdictFromFiles(r.files);
+  const priceM   = dec.match(/\*\*Price Target\*\*:\s*([\d.]+)/i);
+  const horizonM = dec.match(/\*\*Time Horizon\*\*:\s*(.+)/i);
+  const trader   = r.files['trader'] || '';
+  const actionM  = trader.match(/\*\*Action\*\*:\s*(\w+)/i);
+  const entryM   = trader.match(/\*\*Entry Price\*\*:\s*([\d.]+)/i);
+  const stopM    = trader.match(/\*\*Stop Loss\*\*:\s*([\d.]+)/i);
+
+  r._verdict     = verdict;
+  r._priceTarget = priceM   ? priceM[1]   : null;
+  r._horizon     = horizonM ? horizonM[1].trim() : null;
+  r._action      = actionM  ? actionM[1]  : '';
+  r._entry       = entryM   ? entryM[1]   : '';
+  r._stop        = stopM    ? stopM[1]    : '';
+
+  // Header
+  document.getElementById('hdr-ticker').textContent = r.ticker || r.folderName;
+  document.getElementById('hdr-date').textContent   = (r.date || '') + (r.time ? '  ' + r.time : '');
+  const vEl = document.getElementById('hdr-verdict');
+  vEl.textContent  = verdict || '—';
+  const vc = verdict.toLowerCase();
+  vEl.className = 'verdict-badge ' + (vc==='sell'?'rv-sell':vc==='buy'?'rv-buy':'rv-hold');
+
+  show('app');
+  // Reset sidebar
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+  const first = document.querySelector('.sb-item[data-panel="summary"]');
+  first.classList.add('active');
+  showPanelName('summary');
+}
+
+// ── Sidebar navigation ──
+function showPanel(el) {
+  document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  showPanelName(el.dataset.panel);
+}
+
+function showPanelName(panel) {
+  const mp = document.getElementById('main-panel');
+  mp.scrollTop = 0;
+  const r = currentReport;
+  switch(panel) {
+    case 'summary':      mp.innerHTML = renderSummary(r);         break;
+    case 'fundamentals': mp.innerHTML = renderMd(r,'fundamentals','Fundamentals Analysis','b-analysts');    break;
+    case 'market':       mp.innerHTML = renderMd(r,'market','Technical & Market Analysis','b-analysts');    break;
+    case 'news':         mp.innerHTML = renderMd(r,'news','News & Macro','b-analysts');                     break;
+    case 'sentiment':    mp.innerHTML = renderSentiment(r);        break;
+    case 'debate':       mp.innerHTML = renderDebate(r);           break;
+    case 'manager':      mp.innerHTML = renderMd(r,'manager','Research Manager','b-research');              break;
+    case 'trader':       mp.innerHTML = renderTrader(r);           break;
+    case 'risk':         mp.innerHTML = renderRisk(r);             break;
+    case 'final':        mp.innerHTML = renderFinal(r);            break;
+  }
+}
+
+// ── Renderers ──
+function md(text) {
+  if (!text) return '<p style="color:var(--text3)">No data available.</p>';
+  return '<div class="md">' + marked.parse(text) + '</div>';
+}
+
+function renderMd(r, key, title, badge) {
+  return `<div class="sec-header"><div class="sec-title">${title}</div><span class="sec-badge ${badge}">${badge.replace('b-','')}</span></div>${md(r.files[key])}`;
+}
+
+function renderSummary(r) {
+  const vc = (r._verdict||'').toLowerCase();
+  const color = vc==='sell'?'var(--red)':vc==='buy'?'var(--green)':'var(--amber)';
+  const cardBorder = vc==='sell'?'dc-sell':vc==='buy'?'dc-buy':'dc-hold';
+
+  const dec = r.files['decision']||'';
+  const execM   = dec.match(/\*\*Executive Summary\*\*:\s*([\s\S]+?)(?=\*\*Investment Thesis|\*\*Price|$)/i);
+  const thesisM = dec.match(/\*\*Investment Thesis\*\*:\s*([\s\S]+?)(?=\*\*Technical|\*\*Price|\*\*Why|$)/i);
+  const exec   = execM   ? execM[1].trim()            : '';
+  const thesis = thesisM ? thesisM[1].trim().slice(0,500)+'…' : '';
+
+  return `
+  <div class="sec-header"><div class="sec-title">Summary — ${r.ticker||r.folderName}</div><span class="sec-badge b-overview">overview</span></div>
+  <div class="pipeline">
+    <span class="pl-node pl-a">📊 Analysts</span><span class="pl-arrow">→</span>
+    <span class="pl-node pl-r">🐻🐂 Research</span><span class="pl-arrow">→</span>
+    <span class="pl-node pl-m">🧠 Manager</span><span class="pl-arrow">→</span>
+    <span class="pl-node pl-t">📈 Trader</span><span class="pl-arrow">→</span>
+    <span class="pl-node pl-ri">⚠️ Risk</span><span class="pl-arrow">→</span>
+    <span class="pl-node pl-d">✅ Decision</span>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-lbl">Verdict</div><div class="stat-val" style="color:${color}">${r._verdict||'—'}</div></div>
+    ${r._priceTarget?`<div class="stat-card"><div class="stat-lbl">Price Target</div><div class="stat-val ${vc==='sell'?'sv-red':'sv-green'}">$${r._priceTarget}</div>${r._horizon?`<div class="stat-sub">${r._horizon}</div>`:''}</div>`:''}
+    ${r._entry?`<div class="stat-card"><div class="stat-lbl">Entry Price</div><div class="stat-val">$${r._entry}</div></div>`:''}
+    ${r._stop?`<div class="stat-card"><div class="stat-lbl">Stop Loss</div><div class="stat-val sv-red">$${r._stop}</div></div>`:''}
+  </div>
+  ${exec?`<div class="dc ${cardBorder}"><div class="dc-title">Executive Summary</div><div class="dc-body">${exec}</div></div>`:''}
+  ${thesis?`<div class="dc dc-info"><div class="dc-title">Investment Thesis</div><div class="dc-body">${thesis}</div></div>`:''}
+  <p style="color:var(--text3);font-size:12px;margin-top:14px">Use the sidebar to explore each agent's full analysis.</p>`;
+}
+
+function renderSentiment(r) {
+  const text = r.files['sentiment']||'';
+  const sources = [
+    { name:'News',       re:/News.*?Signal.*?(BULLISH|BEARISH|NEUTRAL|MIXED)/i },
+    { name:'StockTwits', re:/StockTwits.*?Signal.*?(BULLISH|BEARISH|NEUTRAL|STRONGLY BULLISH|MIXED)/i },
+    { name:'Reddit',     re:/Reddit.*?Signal.*?(BULLISH|BEARISH|NEUTRAL|ABSENT|MIXED)/i },
+    { name:'Overall',    re:/Overall.*?(BULLISH|BEARISH|NEUTRAL|MIXED)/i },
+  ];
+  const rows = sources.map(s => {
+    const m = text.match(s.re);
+    if (!m) return '';
+    const sig = m[1].toUpperCase();
+    const isBull = sig.includes('BULLISH');
+    const isBear = sig.includes('BEARISH');
+    const isAbs  = sig === 'ABSENT';
+    const barCls  = isBull?'sb-bull':isBear?'sb-bear':'sb-neut';
+    const lblCls  = isBull?'sl-bull':isBear?'sl-bear':isAbs?'sl-abs':'sl-neut';
+    const width   = isBull?(sig.includes('STRONGLY')?95:75):isBear?75:isAbs?8:50;
+    return `<div class="sent-row">
+      <div class="sent-src">${s.name}</div>
+      <div class="sent-bar-wrap"><div class="sent-bar ${barCls}" style="width:${width}%"></div></div>
+      <div class="sent-lbl ${lblCls}">${sig}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="sec-header"><div class="sec-title">Sentiment Analysis</div><span class="sec-badge b-analysts">analysts</span></div>
+  ${rows?`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:20px">${rows}</div>`:''}
+  ${md(text)}`;
+}
+
+function renderDebate(r) {
+  const bull = (r.files['bull']||'').split('\n\n').filter(p=>p.trim().length>60);
+  const bear = (r.files['bear']||'').split('\n\n').filter(p=>p.trim().length>60);
+  const msgs = [];
+  const chunk = 2;
+  const maxLen = Math.max(bull.length, bear.length);
+  for (let i=0;i<maxLen;i+=chunk) {
+    const bp = bull.slice(i,i+chunk).join('\n\n');
+    const rp = bear.slice(i,i+chunk).join('\n\n');
+    if (bp.trim()) msgs.push({role:'bull',text:bp});
+    if (rp.trim()) msgs.push({role:'bear',text:rp});
+  }
+  const rows = msgs.slice(0,24).map(msg => {
+    const isBull = msg.role==='bull';
+    return `<div class="debate-msg">
+      <div class="d-avatar ${isBull?'av-bull':'av-bear'}">${isBull?'🐂':'🐻'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="d-name">${isBull?'Bull Analyst':'Bear Analyst'}
+          <span><span style="padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;${isBull?'background:#0d2b1e;color:var(--green)':'background:#2b0d0d;color:var(--red)'}">${isBull?'Bull case':'Bear case'}</span></span>
+        </div>
+        ${md(msg.text)}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="sec-header"><div class="sec-title">Bull vs Bear Debate</div><span class="sec-badge b-research">research</span></div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:11px 18px;margin-bottom:18px;font-size:13px;color:var(--text2)">
+    The bull and bear researchers debate the thesis. Their arguments inform the research manager's recommendation.
+  </div>
+  <div>${rows}</div>`;
+}
+
+function renderTrader(r) {
+  const vc = (r._action||'').toLowerCase();
+  const color = vc==='sell'?'var(--red)':vc==='buy'?'var(--green)':'var(--amber)';
+  const cardBorder = vc==='sell'?'dc-sell':vc==='buy'?'dc-buy':'dc-hold';
+  const trader = r.files['trader']||'';
+  const reasonM = trader.match(/\*\*Reasoning\*\*:\s*([\s\S]+?)(?=\*\*Entry|\*\*Stop|FINAL|$)/i);
+  const posM    = trader.match(/\*\*Position Sizing\*\*:\s*([\s\S]+?)(?=\nFINAL|$)/i);
+  return `<div class="sec-header"><div class="sec-title">Trader Decision</div><span class="sec-badge b-trading">trading</span></div>
+  <div class="trader-grid">
+    <div class="tf"><div class="tf-lbl">Action</div><div class="tf-val" style="color:${color}">${r._action||'—'}</div></div>
+    <div class="tf"><div class="tf-lbl">Entry Price</div><div class="tf-val">${r._entry?'$'+r._entry:'—'}</div></div>
+    <div class="tf"><div class="tf-lbl">Stop Loss</div><div class="tf-val sv-red">${r._stop?'$'+r._stop:'—'}</div></div>
+  </div>
+  ${reasonM?`<div class="dc ${cardBorder}"><div class="dc-title">Reasoning</div><div class="dc-body">${reasonM[1].trim()}</div></div>`:''}
+  ${posM?`<div class="dc" style="border-left:4px solid var(--amber)"><div class="dc-title">Position Sizing</div><div class="dc-body">${posM[1].trim()}</div></div>`:''}`;
+}
+
+function renderRisk(r) {
+  const tabs = [
+    {key:'aggressive',label:'🔥 Aggressive'},
+    {key:'neutral',   label:'⚖️ Neutral'},
+    {key:'conservative',label:'🛡️ Conservative'},
+  ];
+  const btns = tabs.map((t,i)=>`<button class="tab-btn ${i===0?'active':''}" onclick="switchTab(this,'rtab-${t.key}')">${t.label}</button>`).join('');
+  const contents = tabs.map((t,i)=>`<div class="tab-content ${i===0?'active':''}" id="rtab-${t.key}">${md(r.files[t.key])}</div>`).join('');
+  return `<div class="sec-header"><div class="sec-title">Risk Analysts</div><span class="sec-badge b-risk">risk</span></div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:11px 18px;margin-bottom:18px;font-size:13px;color:var(--text2)">
+    Three risk desks independently evaluate the trader's recommendation.
+  </div>
+  <div class="tab-bar">${btns}</div>${contents}`;
+}
+
+function renderFinal(r) {
+  const vc = (r._verdict||'').toLowerCase();
+  const color = vc==='sell'?'var(--red)':vc==='buy'?'var(--green)':'var(--amber)';
+  return `<div class="sec-header"><div class="sec-title">Final Portfolio Decision</div><span class="sec-badge b-decision">decision</span></div>
+  <div class="stat-grid" style="margin-bottom:20px">
+    <div class="stat-card"><div class="stat-lbl">Rating</div><div class="stat-val" style="color:${color}">${r._verdict||'—'}</div></div>
+    ${r._priceTarget?`<div class="stat-card"><div class="stat-lbl">Price Target</div><div class="stat-val">$${r._priceTarget}</div></div>`:''}
+    ${r._horizon?`<div class="stat-card"><div class="stat-lbl">Time Horizon</div><div class="stat-val" style="font-size:15px">${r._horizon}</div></div>`:''}
+  </div>
+  ${md(r.files['decision'])}`;
+}
+
+function switchTab(btn, tabId) {
+  const mp = document.getElementById('main-panel');
+  mp.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  mp.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  const t = mp.querySelector('#'+tabId);
+  if (t) t.classList.add('active');
+}
+
+// init
+show('landing');
+</script>
+</body>
+</html>
