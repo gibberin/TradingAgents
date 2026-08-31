@@ -6,6 +6,13 @@
 # Each secret is written as a single-line file with chmod 600.
 # The ./secrets/ directory itself is chmod 700.
 #
+# NOTE: Basic Auth credentials (BASIC_AUTH_USER/BASIC_AUTH_HASH) are NOT
+# handled here anymore — Caddy needs them as Caddyfile env-var substitutions
+# ({$VAR}), not as files a container reads at startup, so they live in
+# .env.production instead. See DEPLOYMENT.md step 6 for generating the
+# bcrypt hash with `caddy hash-password`. This script only covers the
+# LLM/data-vendor API keys the running app itself consumes.
+#
 # Usage:
 #   chmod +x scripts/create_secrets.sh
 #   ./scripts/create_secrets.sh
@@ -87,11 +94,6 @@ write_secret() {
   fi
   echo ""
 }
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
-echo "── Web Interface Authentication ─────────────────────────"
-write_secret "basic_auth_user"     "Username for web login" "required"
-write_secret "basic_auth_password" "Password for web login" "required"
 
 # ── LLM providers ─────────────────────────────────────────────────────────────
 echo "── LLM Provider (at least one required) ─────────────────"

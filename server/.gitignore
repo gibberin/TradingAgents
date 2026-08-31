@@ -1,6 +1,7 @@
 # ── Secrets — NEVER commit these ─────────────────────────────────────────────
 secrets/
 .env
+.env.production
 
 # ── Runtime artifacts ─────────────────────────────────────────────────────────
 __pycache__/

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# deploy.sh — TradingAgents Viewer: Linode VPS setup script
+# deploy.sh — TradingAgents: Linode VPS one-time OS setup
 #
 # Run this on a fresh Linode Debian 12 / Ubuntu 24.04 VM as root.
 # Usage:
@@ -11,8 +11,13 @@
 #   1. Updates the system
 #   2. Installs Docker + Docker Compose
 #   3. Mounts your Linode Block Storage volume at /mnt/reports
-#   4. Prompts you to configure .env
-#   5. Builds and starts the container
+#   4. Opens the firewall (22, 80, 443)
+#
+# What it deliberately does NOT do anymore: build an image, prompt for
+# secrets, or start the stack. Production now runs a prebuilt image pulled
+# from GHCR (docker-compose.prod.yml), not a local build — see
+# DEPLOYMENT.md for the rest of the walkthrough (.env.production, secrets,
+# GHCR login, first `pull`+`up -d`) once this script finishes.
 # =============================================================================
 
 set -euo pipefail
@@ -111,72 +116,33 @@ else
   fi
 fi
 
-# ── 5. Configure .env (non-sensitive config only) ─────────────────────────────
-DEPLOY_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENV_FILE="$DEPLOY_DIR/.env"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  cp "$DEPLOY_DIR/.env.example" "$ENV_FILE"
-  info "Created .env from template"
-fi
-
-# Auto-set REPORTS_HOST_PATH to the mount point we configured above
-sed -i "s|REPORTS_HOST_PATH=.*|REPORTS_HOST_PATH=$MOUNT_POINT|" "$ENV_FILE"
-success "Set REPORTS_HOST_PATH=$MOUNT_POINT in .env"
-
-# ── 6. Set up Docker secrets ──────────────────────────────────────────────────
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  API keys and passwords are stored as Docker secrets."
-echo "  They live in ./secrets/ as individual files (chmod 600)."
-echo "  They are NEVER written to environment variables."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-chmod +x "$DEPLOY_DIR/scripts/create_secrets.sh"
-"$DEPLOY_DIR/scripts/create_secrets.sh"
-
-# ── 7. Firewall ───────────────────────────────────────────────────────────────
+# ── 5. Firewall ───────────────────────────────────────────────────────────────
 info "Configuring firewall (ufw)…"
 if command -v ufw &>/dev/null; then
-  ufw allow 22/tcp  comment "SSH"  2>/dev/null || true
-  ufw allow 80/tcp  comment "HTTP" 2>/dev/null || true
+  ufw allow 22/tcp  comment "SSH"        2>/dev/null || true
+  ufw allow 80/tcp  comment "HTTP/ACME"  2>/dev/null || true
+  ufw allow 443/tcp comment "HTTPS"      2>/dev/null || true
   ufw --force enable 2>/dev/null || true
-  success "Firewall: SSH(22) and HTTP(80) open"
+  success "Firewall: SSH(22), HTTP(80), HTTPS(443) open"
 else
   warn "ufw not found — skipping firewall config"
 fi
 
-# ── 8. Build and start ────────────────────────────────────────────────────────
-cd "$DEPLOY_DIR"
-
-info "Building Docker image (this takes a few minutes on first run)…"
-docker compose build --no-cache
-
-info "Starting container…"
-docker compose up -d
-
-success "Container started!"
-
-# ── 9. Summary ────────────────────────────────────────────────────────────────
-LINODE_IP=$(curl -s http://169.254.169.254/v1/instance/network_interfaces 2>/dev/null \
-  | grep -oP '"ip_address":"\K[^"]+' | head -1 \
-  || hostname -I | awk '{print $1}')
-
+# ── 6. Summary ────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "  ${GREEN}TradingAgents is running!${NC}"
+echo -e "  ${GREEN}OS-level setup complete.${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "  URL:      http://${LINODE_IP}"
-echo "  Username: $(grep BASIC_AUTH_USER $ENV_FILE | cut -d= -f2)"
-echo "  Password: (as set in .env)"
+echo "  Reports volume mounted at: $MOUNT_POINT"
 echo ""
-echo "  Reports stored at: $MOUNT_POINT"
-echo ""
-echo "  Useful commands:"
-echo "    docker compose logs -f        # live logs"
-echo "    docker compose restart        # restart"
-echo "    docker compose down           # stop"
-echo "    docker compose pull && docker compose up -d  # update"
+echo "  Continue with DEPLOYMENT.md from here:"
+echo "    - point DNS at this box"
+echo "    - clone the repo, cd into server/"
+echo "    - cp .env.production.example .env.production  (fill in real values)"
+echo "    - ./scripts/create_secrets.sh                 (LLM/data-vendor keys)"
+echo "    - docker login ghcr.io                        (one-time)"
+echo "    - docker compose --env-file .env.production -f docker-compose.prod.yml pull"
+echo "    - docker compose --env-file .env.production -f docker-compose.prod.yml up -d"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

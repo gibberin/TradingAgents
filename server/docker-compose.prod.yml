@@ -1,0 +1,91 @@
+# Production stack: api (FastAPI) -> caddy (reverse proxy + TLS + Basic
+# Auth). Two containers, down from one nginx+uvicorn container previously —
+# see server/Dockerfile and deploy/Caddyfile for why, and DEPLOYMENT.md for
+# the full walkthrough (this mirrors WiseWire/fenceaware-server's proven
+# pattern, adapted: no database/message-broker here, just one app service).
+#
+# `api` runs a prebuilt image from GHCR (tag :release), pushed by CI only
+# after that exact image passes the smoke test — see
+# .github/workflows/tradingagents-deploy.yml. Nothing is built on this box;
+# deploying is a pull, not a compile. Requires a one-time `docker login
+# ghcr.io` on this server first (DEPLOYMENT.md).
+#
+# Run with --env-file so .env.production's values are available both for
+# the ${...} substitutions below and inside the containers:
+#   docker compose --env-file .env.production -f docker-compose.prod.yml pull
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# See DEPLOYMENT.md for the full walkthrough (DNS, firewall, first deploy,
+# redeploys, CI/CD setup).
+name: tradingagents
+
+secrets:
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  finnhub_api_key:
+    file: ./secrets/finnhub_api_key
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  google_api_key:
+    file: ./secrets/google_api_key
+  reddit_client_id:
+    file: ./secrets/reddit_client_id
+  reddit_client_secret:
+    file: ./secrets/reddit_client_secret
+
+services:
+  api:
+    image: ghcr.io/gibberin/tradingagents-api:release
+    restart: unless-stopped
+    volumes:
+      # Block Storage volume — mount this Linode volume at /mnt/reports on
+      # the host, then it maps through to /data/reports inside the container.
+      - ${REPORTS_HOST_PATH:-/mnt/reports}:/data/reports
+    secrets:
+      - anthropic_api_key
+      - finnhub_api_key
+      - openai_api_key
+      - google_api_key
+      - reddit_client_id
+      - reddit_client_secret
+    environment:
+      REPORTS_PATH:       /data/reports
+      TRADINGAGENTS_PATH: /app/TradingAgents
+      PYTHONUNBUFFERED:   "1"
+      REDDIT_USER_AGENT:  ${REDDIT_USER_AGENT:-tradingagents-deploy}
+    # Not published to the host — only `caddy` talks to this, over the
+    # compose network, by service name. Matches fenceaware-server's `api`
+    # service treatment.
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        limits:
+          memory: 3500M
+        reservations:
+          memory: 512M
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      ACME_EMAIL:      ${ACME_EMAIL}
+      DOMAIN:           ${DOMAIN}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_HASH:  ${BASIC_AUTH_HASH}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Let's Encrypt certs + Caddy's own state — persisted so a redeploy
+      # doesn't force re-issuing certs (and risk Let's Encrypt's rate
+      # limits) every time this container is recreated.
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "==> TradingAgents Viewer starting up"
+echo "==> TradingAgents API starting up"
 
 # ── Helper: read a Docker secret file, return empty string if missing ─────────
 read_secret() {
@@ -14,32 +14,18 @@ read_secret() {
   fi
 }
 
-# ── 1. Generate .htpasswd from Docker secrets ─────────────────────────────────
-AUTH_USER="$(read_secret basic_auth_user)"
-AUTH_PASS="$(read_secret basic_auth_password)"
+# Basic Auth is now Caddy's job (see deploy/Caddyfile) — it authenticates
+# the request before it ever reaches this container, using a bcrypt hash
+# generated once at secret-creation time (scripts/create_secrets.sh), not
+# hashed here at every startup the way nginx's htpasswd used to be. Nothing
+# for this entrypoint to do for auth anymore.
 
-# Fallbacks (with warnings) in case secrets weren't provided
-if [ -z "$AUTH_USER" ]; then
-  echo "WARNING: basic_auth_user secret not found — defaulting to 'admin'"
-  AUTH_USER="admin"
-fi
-if [ -z "$AUTH_PASS" ]; then
-  echo "WARNING: basic_auth_password secret not found — using insecure default!"
-  AUTH_PASS="changeme"
-fi
-
-echo "==> Creating .htpasswd for user: $AUTH_USER"
-htpasswd -bc /etc/nginx/.htpasswd "$AUTH_USER" "$AUTH_PASS"
-
-# Unset so the password doesn't linger in shell memory
-unset AUTH_PASS
-
-# ── 2. Ensure reports directory exists ───────────────────────────────────────
+# ── 1. Ensure reports directory exists ───────────────────────────────────────
 REPORTS_PATH="${REPORTS_PATH:-/data/reports}"
 mkdir -p "$REPORTS_PATH"
 echo "==> Reports directory: $REPORTS_PATH"
 
-# ── 3. Build TradingAgents .env from Docker secrets ──────────────────────────
+# ── 2. Build TradingAgents .env from Docker secrets ──────────────────────────
 # TradingAgents reads its keys from a .env file in its own directory.
 # We write it here at startup from secrets so keys never touch environment vars.
 TA_ENV="/app/TradingAgents/.env"
@@ -75,15 +61,14 @@ fi
 
 echo "==> TradingAgents .env written ($(wc -l < "$TA_ENV") keys)"
 
-# ── 4. Start Nginx in background ─────────────────────────────────────────────
-echo "==> Starting Nginx"
-nginx -g "daemon off;" &
-
-# ── 5. Start FastAPI (uvicorn) in foreground ─────────────────────────────────
+# ── 3. Start FastAPI (uvicorn) in foreground ─────────────────────────────────
+# Bound to 0.0.0.0, not 127.0.0.1: Caddy now reaches this container over the
+# Docker Compose network by service name (api:8000), not localhost — the two
+# processes are no longer sharing one container's loopback interface.
 echo "==> Starting FastAPI on port 8000"
 cd /app
 exec uvicorn api.main:app \
-  --host 127.0.0.1 \
+  --host 0.0.0.0 \
   --port 8000 \
   --workers 2 \
   --log-level info \

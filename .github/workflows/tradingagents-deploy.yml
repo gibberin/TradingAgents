@@ -1,0 +1,163 @@
+name: Deploy tradingagents-api
+
+# Push to release (server/** changes only — this repo also holds the
+# unrelated upstream TauricResearch CLI/agent code, which should never
+# trigger this) -> build the api image ONCE and push it to GHCR, tagged
+# with this commit's SHA -> boot that exact image (no Caddy, no real LLM
+# keys — see tradingagents-smoke-test.sh) and run a read-only smoke test
+# against it, in an isolated container on this runner -> only on success,
+# retag that same image :release (never rebuilt, never re-tested) -> SSH
+# to the Linode box, which pulls :release and starts it. A broken commit
+# never reaches production, and the image that's tested is byte-for-byte
+# the image that runs in prod, not a second independent build. Mirrors
+# WiseWire/fenceaware-server's proven pattern (see its DEPLOYMENT.md) —
+# see server/DEPLOYMENT.md's "Redeploying after a change" section for the
+# manual equivalent of the deploy step below, and its "Continuous
+# deployment" section for the one-time GHCR login this depends on
+# server-side.
+#
+# The `release` branch does not exist yet as of this workflow's creation
+# — nothing here fires until it does. Create it (and complete the
+# one-time CI/CD setup in server/DEPLOYMENT.md) when there's a real first
+# deploy ready to ship.
+on:
+  push:
+    branches: [release]
+    paths:
+      - "server/**"
+      - ".github/workflows/tradingagents-deploy.yml"
+      - ".github/workflows/tradingagents-smoke-test.sh"
+
+# If two pushes to release land close together, run their deploys one at
+# a time in order rather than letting two deploys race each other on the
+# same server.
+concurrency:
+  group: deploy-tradingagents-release
+  cancel-in-progress: false
+
+env:
+  # GHCR namespaces images under the account/org that owns the repo, not
+  # the repo name itself.
+  API_IMAGE: ghcr.io/${{ github.repository_owner }}/tradingagents-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed to push to GHCR with the auto-issued GITHUB_TOKEN — no PAT
+      # required for this job (the server-side pull later is a separate
+      # story; see server/DEPLOYMENT.md).
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Tagged only with the commit SHA at this point — deliberately NOT
+      # :release yet. :release only ever gets pointed at an image after
+      # smoke-test passes (see the promote step in the deploy job below),
+      # so that floating tag can never point at something unvetted, even
+      # transiently.
+      - name: Build and push api image
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          file: server/Dockerfile
+          push: true
+          tags: ${{ env.API_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=tradingagents-api
+          cache-to: type=gha,mode=max,scope=tradingagents-api
+
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start the CI stack against the just-built image
+        # CI_API_IMAGE overrides docker-compose.ci.yml's default local
+        # tag — no `--build` here, so this pulls and runs the exact image
+        # pushed above rather than building a second, independent copy of
+        # it from source.
+        env:
+          CI_API_IMAGE: ${{ env.API_IMAGE }}:${{ github.sha }}
+        run: docker compose -f docker-compose.ci.yml up -d
+
+      - name: Run smoke test
+        run: |
+          chmod +x ../.github/workflows/tradingagents-smoke-test.sh
+          ../.github/workflows/tradingagents-smoke-test.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.ci.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.ci.yml down -v
+
+  deploy:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    # Scopes DEPLOY_* to the "production" Environment (Settings ->
+    # Environments in GitHub, not Settings -> Secrets) rather than
+    # repository secrets, restricted to the `release` branch via that
+    # environment's deployment branch policy. See server/DEPLOYMENT.md's
+    # "Continuous deployment" section before this job can actually run.
+    environment: production
+    permissions:
+      contents: read
+      # Needed for the imagetools retag below — it pushes a new tag
+      # pointing at an already-uploaded manifest, no image bytes move.
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote the tested image to :release
+        # `imagetools create` adds a tag to an existing manifest without
+        # pulling or rebuilding anything — this is the moment (and the
+        # only moment) :release ever moves, and it only happens because
+        # the smoke-test job this depends on already passed against this
+        # exact sha-tagged image.
+        run: |
+          docker buildx imagetools create -t ${{ env.API_IMAGE }}:release ${{ env.API_IMAGE }}:${{ github.sha }}
+
+      - name: Deploy over SSH
+        # The actual deploy command is NOT this script — it's a forced
+        # command tied to the deploy key on the server side (see the
+        # authorized_keys entry set up per server/DEPLOYMENT.md), so the
+        # server runs its own fixed command regardless of what's sent
+        # here. That's deliberate: even if this key/secret ever leaked,
+        # it can only ever run that one pinned command, never an
+        # arbitrary shell. This step's real job is just proving SSH auth
+        # succeeds and surfacing the deploy's real output/exit code.
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: echo "triggering deploy"

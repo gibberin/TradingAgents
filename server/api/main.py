@@ -2,6 +2,9 @@
 TradingAgents API
 -----------------
 Endpoints:
+  GET  /                      — the static viewer SPA (was nginx's job;
+                                 see the "Static viewer" section below for why
+                                 it moved here when Caddy replaced nginx)
   GET  /api/reports          — list all report folders with metadata
   GET  /api/reports/{folder}/{path:path}  — serve a single .md file
   POST /api/run              — start an analysis (SSE stream of log lines)
@@ -23,13 +26,14 @@ from typing import AsyncGenerator
 import aiofiles
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 # ── Config ────────────────────────────────────────────────────────────────────
 REPORTS_PATH      = Path(os.environ.get("REPORTS_PATH", "/data/reports"))
 TRADINGAGENTS_DIR = Path(os.environ.get("TRADINGAGENTS_PATH", "/app/TradingAgents"))
+VIEWER_HTML        = Path(os.environ.get("VIEWER_HTML", "/app/viewer/index.html"))
 
 # Subfolder → file keys mapping (mirrors TradingAgents output structure)
 REPORT_STRUCTURE = {
@@ -107,6 +111,21 @@ async def load_report_files(folder_path: Path) -> dict[str, str]:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+# Static viewer — previously nginx's job (serving /var/www/html directly).
+# Caddy replaced nginx as the edge proxy and, per the docker-compose.prod.yml
+# design, only ever reverse-proxies to this service rather than also running
+# its own file_server — so the app itself needs to serve its one HTML file.
+# (The viewer is a single self-contained file — see viewer/README or its
+# <script src> for the one external dependency, marked.js off a CDN — so a
+# single FileResponse is enough; this isn't a multi-asset SPA needing a
+# StaticFiles mount.)
+@app.get("/")
+async def serve_viewer():
+    if not VIEWER_HTML.exists():
+        raise HTTPException(status_code=500, detail=f"Viewer HTML not found at {VIEWER_HTML}")
+    return FileResponse(VIEWER_HTML)
+
 
 @app.get("/reports")
 async def list_reports():

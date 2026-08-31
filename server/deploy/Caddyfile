@@ -1,0 +1,47 @@
+# Caddy is the only edge process in this stack now — it replaced nginx
+# entirely (see server/Dockerfile's comment), so it does three things nginx
+# used to split across nginx.conf + entrypoint.sh's htpasswd generation:
+# TLS, Basic Auth, and reverse proxying, including the SSE run-progress
+# stream. Caddy's reverse_proxy doesn't buffer by default the way nginx
+# does, so unlike the old nginx.conf there's no separate location block or
+# proxy_buffering/chunked_transfer_encoding tuning needed just for the SSE
+# route (/api/run) — one reverse_proxy directive covers everything.
+#
+# Cert issuance: on first request, Caddy obtains a Let's Encrypt cert via
+# the HTTP-01 challenge (needs ports 80+443 reachable from the internet and
+# DNS already pointed at this box), then renews it automatically in the
+# background for as long as this container runs. No certbot, no cron job.
+#
+# DOMAIN/ACME_EMAIL/BASIC_AUTH_* come from docker-compose.prod.yml's
+# environment block, sourced from .env.production — see
+# "Migrating to a new domain" in DEPLOYMENT.md if focusario.com ever
+# changes.
+#
+# www.focusario.com redirects to the apex rather than serving a second
+# copy — one canonical origin, one cert covering both names (Caddy issues
+# a single cert listing both SANs automatically since both are declared
+# below), no duplicated basicauth block to keep in sync.
+#
+# api.focusario.com is NOT wired up here yet — that CNAME exists in DNS
+# but nothing serves it. The API is reachable at {$DOMAIN}/api/* today
+# (FastAPI serves UI+API from one origin — see api/main.py). A dedicated
+# api.focusario.com site block (its own reverse_proxy to api:8000, its
+# own basicauth or a different auth scheme for programmatic/non-browser
+# clients) is a deliberate later addition, not an oversight — add it here
+# when there's an actual client that wants API access without the web UI
+# wrapper, rather than standing up an unused second entry point now.
+{
+	email {$ACME_EMAIL}
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
+
+{$DOMAIN} {
+	basicauth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	reverse_proxy api:8000
+}

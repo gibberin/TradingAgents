@@ -1,0 +1,19 @@
+# Used only by the smoke-test job in .github/workflows/tradingagents-deploy.yml
+# — boots the just-built `api` image alone (no Caddy: there's no TLS to test
+# in CI, and no LLM/data-vendor secrets either — see the workflow's comment
+# on why the smoke test deliberately only exercises /health and /reports,
+# never a real analysis run, which would need real API keys and spend real
+# money on every push). CI_API_IMAGE overrides the default so this pulls and
+# runs the exact sha-tagged image CI just pushed, never a second independent
+# build from source.
+name: tradingagents-ci
+
+services:
+  api:
+    image: ${CI_API_IMAGE:-tradingagents-api:local}
+    environment:
+      REPORTS_PATH:       /data/reports
+      TRADINGAGENTS_PATH: /app/TradingAgents
+      PYTHONUNBUFFERED:   "1"
+    ports:
+      - "8000:8000"
