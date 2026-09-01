@@ -26,7 +26,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 #shell{display:flex;flex-direction:column;height:100vh}
 
 /* Top nav */
-.topnav{display:flex;align-items:center;gap:0;padding:0;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;height:48px}
+.topnav{display:flex;align-items:center;gap:0;padding:0;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;height:48px;overflow-x:auto}
 .tn-logo{padding:0 20px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);font-weight:700;border-right:1px solid var(--border);height:100%;display:flex;align-items:center}
 .tn-tab{padding:0 20px;height:100%;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text3);border-bottom:2px solid transparent;transition:all .15s;border-right:1px solid var(--border);user-select:none}
 .tn-tab:hover{color:var(--text2);background:var(--bg3)}
@@ -63,6 +63,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 
 /* Report viewer */
 .report-viewer{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.rv-back{display:none;align-items:center;gap:6px;padding:10px 16px;border:none;border-bottom:1px solid var(--border);background:var(--bg2);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);flex-shrink:0}
 .rv-tabs{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;padding:0 16px;overflow-x:auto}
 .rv-tab{padding:10px 14px;cursor:pointer;font-size:12px;color:var(--text3);border-bottom:2px solid transparent;white-space:nowrap;transition:all .12s;border:none;background:none;font-family:var(--sans)}
 .rv-tab:hover{color:var(--text2)}
@@ -178,6 +179,42 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:var(--bg2)}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ── MOBILE ──
+   Below this width the reports sidebar (fixed 320px) and the actual
+   report content were sharing one row, squeezing content into whatever
+   sliver was left over - this section is what fixes that, plus a few
+   grids that were too cramped at this width to read. Nothing above this
+   block is mobile-aware; everything mobile-specific lives here so the
+   desktop layout stays exactly as it was. */
+@media (max-width: 820px) {
+  /* Reports page: show the list OR the detail view, never both squeezed
+     side by side - .showing-detail is toggled by openReport()/backToList()
+     in the script below. */
+  #page-reports { position: relative; }
+  .report-sidebar { width: 100%; min-width: 0; border-right: none; }
+  #page-reports.showing-detail .report-sidebar { display: none; }
+  #page-reports:not(.showing-detail) .report-viewer { display: none; }
+  .rv-back { display: flex; }
+
+  .run-body { padding: 20px 16px; }
+  .rv-content { padding: 16px; }
+
+  /* Ticker/date side-by-side inputs and the 3-column trader stat grid
+     are unreadable this narrow - stack them. */
+  .form-row { grid-template-columns: 1fr; }
+  .trader-grid { grid-template-columns: 1fr; }
+
+  /* 5-across stage tracker: let it wrap to fewer columns instead of
+     squeezing each stage's icon+label into ~50px. */
+  .stages { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+
+  /* Report tables (e.g. the summary tables every report section has)
+     routinely have 4-5 columns - let the table itself scroll
+     horizontally rather than squeezing every cell to a sliver. */
+  .md { overflow-x: hidden; }
+  .md table { display: block; overflow-x: auto; white-space: nowrap; }
+}
 </style>
 </head>
 <body>
@@ -206,6 +243,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
       <div class="report-list" id="report-list"></div>
     </div>
     <div class="report-viewer">
+      <button class="rv-back" onclick="backToList()">← Reports</button>
       <div class="rv-tabs" id="rv-tabs" style="display:none">
         <button class="rv-tab active" data-tab="summary" onclick="switchReportTab(this)">Summary</button>
         <button class="rv-tab" data-tab="fundamentals" onclick="switchReportTab(this)">Fundamentals</button>
@@ -346,9 +384,18 @@ function filterReports(q) {
   ) : allReports);
 }
 
+function backToList() {
+  document.getElementById('page-reports').classList.remove('showing-detail');
+}
+
 async function openReport(idx) {
   const meta = dispReports[idx];
   if (!meta) return;
+
+  // Mobile: swap to the detail view instead of squeezing both panels
+  // into one row. No-op on desktop - the media query that reads this
+  // class doesn't apply above 820px, so both panels just stay visible.
+  document.getElementById('page-reports').classList.add('showing-detail');
 
   // Mark active in list
   document.querySelectorAll('.rl-item').forEach(el => el.classList.remove('active'));
