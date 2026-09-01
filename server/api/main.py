@@ -138,6 +138,11 @@ async def list_reports():
         if not entry.is_dir():
             continue
         meta = parse_folder_name(entry.name)
+        if meta["ticker"] is None:
+            # Not a TICKER_YYYYMMDD_HHMMSS folder - e.g. ext4's auto-created
+            # lost+found at the filesystem root, or anything else that ended
+            # up under REPORTS_PATH without going through a real run.
+            continue
 
         # Quick peek at decision.md for verdict + excerpt
         decision_path = entry / "5_portfolio" / "decision.md"
