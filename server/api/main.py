@@ -252,8 +252,10 @@ sys.path.insert(0, "{TRADINGAGENTS_DIR}")
 os.chdir("{TRADINGAGENTS_DIR}")
 
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.dataflows.utils import safe_ticker_component
 from tradingagents.default_config import DEFAULT_CONFIG
 import json, datetime
+from pathlib import Path
 
 config = DEFAULT_CONFIG.copy()
 config["llm_provider"]  = "anthropic"
@@ -264,6 +266,20 @@ config["results_dir"] = "{REPORTS_PATH}"
 print("TASTART ticker={ticker} date={date}", flush=True)
 ta = TradingAgentsGraph(debug=True, config=config)
 state, decision = ta.propagate("{ticker}", "{date}")
+
+# propagate() alone only writes TradingAgentsGraph's internal debug-state
+# JSON dump (results_dir/<ticker>/TradingAgentsStrategy_logs/) - it does NOT
+# write the markdown report tree the viewer reads. save_reports() is a
+# separate call for that; explicit save_path here so it lands directly
+# under REPORTS_PATH as TICKER_YYYYMMDD_HHMMSS (matching
+# server/api/main.py's parse_folder_name), not nested under an extra
+# "reports/" subdir the way save_reports()'s own default does (that
+# default is meant for the shared ~/.tradingagents home directory the CLI
+# uses, not this dedicated single-purpose volume).
+stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+save_path = Path("{REPORTS_PATH}") / f"{{safe_ticker_component('{ticker}')}}_{{stamp}}"
+ta.save_reports(state, "{ticker}", save_path=save_path)
+
 print("TADONE", flush=True)
 print("TADECISION " + json.dumps(str(decision)[:500]), flush=True)
 """
