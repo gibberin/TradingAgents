@@ -137,7 +137,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14
 .dc-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px}
 .dc-body{color:var(--text2);font-size:13.5px;line-height:1.75}
 .pipeline{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:18px}
-.pl-node{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid}
+.pl-node{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid;font-family:inherit;cursor:pointer;transition:transform .12s,filter .12s;outline:none}
+.pl-node:hover{filter:brightness(1.25);transform:translateY(-1px)}
+.pl-node:active{transform:translateY(0)}
 .pl-a{background:#1a1a3a;color:var(--accent);border-color:#2a2a5a} .pl-r{background:#2a1a1a;color:#e87070;border-color:#5a2a2a}
 .pl-m{background:#2a1a2a;color:var(--purple);border-color:#5a2a5a} .pl-t{background:#1a2a1a;color:var(--green);border-color:#2a5a2a}
 .pl-ri{background:#2a2a1a;color:var(--amber);border-color:#5a5a2a} .pl-d{background:#1a2b2b;color:var(--teal);border-color:#2a5b5b}
@@ -429,6 +431,17 @@ function switchReportTab(el) {
   document.getElementById('rv-content').scrollTop = 0;
 }
 
+// Lets the pipeline badges on the Summary tab (Analysts/Research/Manager/
+// Trader/Risk/Decision) act as shortcuts into the matching tab, instead of
+// being purely decorative despite looking exactly like the clickable
+// section badges elsewhere. Clicks the real tab button rather than
+// duplicating switchReportTab's logic, so behavior always matches
+// whatever the tab bar itself does.
+function goToTab(tab) {
+  const btn = document.querySelector(`.rv-tab[data-tab="${tab}"]`);
+  if (btn) btn.click();
+}
+
 // ── Report content renderers ──────────────────────────────────────────────────
 function mdi(text) {
   if (!text) return '<p style="color:var(--text3)">No data available.</p>';
@@ -484,12 +497,12 @@ function renderSummary(r, f) {
   return `
   <div class="sec-header"><div class="sec-title">Summary — ${r.ticker||r.folder}</div><span class="sec-badge b-overview">overview</span></div>
   <div class="pipeline">
-    <span class="pl-node pl-a">📊 Analysts</span><span class="pl-arrow">→</span>
-    <span class="pl-node pl-r">🐻🐂 Research</span><span class="pl-arrow">→</span>
-    <span class="pl-node pl-m">🧠 Manager</span><span class="pl-arrow">→</span>
-    <span class="pl-node pl-t">📈 Trader</span><span class="pl-arrow">→</span>
-    <span class="pl-node pl-ri">⚠️ Risk</span><span class="pl-arrow">→</span>
-    <span class="pl-node pl-d">✅ Decision</span>
+    <button class="pl-node pl-a" onclick="goToTab('fundamentals')">📊 Analysts</button><span class="pl-arrow">→</span>
+    <button class="pl-node pl-r" onclick="goToTab('debate')">🐻🐂 Research</button><span class="pl-arrow">→</span>
+    <button class="pl-node pl-m" onclick="goToTab('manager')">🧠 Manager</button><span class="pl-arrow">→</span>
+    <button class="pl-node pl-t" onclick="goToTab('trader')">📈 Trader</button><span class="pl-arrow">→</span>
+    <button class="pl-node pl-ri" onclick="goToTab('risk')">⚠️ Risk</button><span class="pl-arrow">→</span>
+    <button class="pl-node pl-d" onclick="goToTab('final')">✅ Decision</button>
   </div>
   <div class="stat-grid">
     <div class="stat-card"><div class="stat-lbl">Verdict</div><div class="stat-val" style="color:${color}">${verdict||'—'}</div></div>
